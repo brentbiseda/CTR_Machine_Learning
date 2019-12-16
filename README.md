@@ -1,1 +1,5 @@
 # CTR_Machine_Learning
+
+Online advertisement is a fast-growing industry with highly scalable revenue opportunities depending on what platforms the advertisements are on. The marketing industry is focusing heavily on understanding and optimizing Click Through Rate (CTR) prediction in order to maximize the opportunity of revenue. CTR can be thought of as the probability that a user will engage with a particular element of the internet such as an advertisement. There are a plethora of features that can influence CTR such as the ad size, placement, color, font, etc. and we wanted to understand these features. Could machine learning be used to predict and optimize CTR?
+
+The dataset for our final project is the Criteo Display Advertising Challenge from 2014 (https://www.kaggle.com/c/criteo-display-ad-challenge/overview). This dataset is a sample of the web traffic that CriteoLabs gathered in order to predict Click Through Rate. The data that was provided is entirely anonymized and there is no additional context behind the independent variables provided. Therefore our line of reasoning and questions were limited to exclude any demographic or domain specific insights.
