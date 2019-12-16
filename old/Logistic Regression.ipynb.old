@@ -1,0 +1,832 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# imports\n",
+    "import re\n",
+    "import ast\n",
+    "import time\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import seaborn as sns\n",
+    "import networkx as nx\n",
+    "import matplotlib.pyplot as plt\n",
+    "from pyspark import SparkContext\n",
+    "from pyspark.sql import SQLContext\n",
+    "from pyspark.sql.types import *\n",
+    "import sys\n",
+    "from pyspark.sql import SQLContext\n",
+    "from pyspark.ml.feature import VectorAssembler\n",
+    "import pyspark.sql.functions as F\n",
+    "from pyspark.mllib.util import MLUtils\n",
+    "from pyspark.ml.feature import StandardScaler\n",
+    "from pyspark.sql import SparkSession\n",
+    "from pyspark.ml.feature import OneHotEncoderEstimator, OneHotEncoderModel\n",
+    "from pyspark.ml.feature import OneHotEncoder, StringIndexer, StandardScaler, Imputer, VectorAssembler, SQLTransformer\n",
+    "from pyspark.ml import Pipeline, PipelineModel\n",
+    "from pyspark.ml.classification import LogisticRegression\n",
+    "from pyspark.ml.evaluation import RegressionEvaluator\n",
+    "from pyspark.ml.evaluation import BinaryClassificationEvaluator\n",
+    "from pyspark.ml.tuning import CrossValidator, ParamGridBuilder, CrossValidatorModel\n",
+    "from pyspark.mllib.evaluation import BinaryClassificationMetrics, MulticlassMetrics"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "%reload_ext autoreload\n",
+    "%autoreload 2"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# store path to notebook\n",
+    "PWD = !pwd\n",
+    "PWD = PWD[0]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "sc = SparkContext(appName=\"Final_Project\")\n",
+    "sqlContext = SQLContext(sc)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# start Spark Session\n",
+    "app_name = \"final_project_notebook\"\n",
+    "master = \"local[*]\"\n",
+    "spark = SparkSession\\\n",
+    "        .builder\\\n",
+    "        .appName(app_name)\\\n",
+    "        .master(master)\\\n",
+    "        .getOrCreate()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "\n",
+       "            <div>\n",
+       "                <p><b>SparkSession - in-memory</b></p>\n",
+       "                \n",
+       "        <div>\n",
+       "            <p><b>SparkContext</b></p>\n",
+       "\n",
+       "            <p><a href=\"http://docker.w261:4040\">Spark UI</a></p>\n",
+       "\n",
+       "            <dl>\n",
+       "              <dt>Version</dt>\n",
+       "                <dd><code>v2.4.4</code></dd>\n",
+       "              <dt>Master</dt>\n",
+       "                <dd><code>local[*]</code></dd>\n",
+       "              <dt>AppName</dt>\n",
+       "                <dd><code>Final_Project</code></dd>\n",
+       "            </dl>\n",
+       "        </div>\n",
+       "        \n",
+       "            </div>\n",
+       "        "
+      ],
+      "text/plain": [
+       "<pyspark.sql.session.SparkSession at 0x7fc2b5d69290>"
+      ]
+     },
+     "execution_count": 6,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "spark"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "sc = spark.sparkContext\n",
+    "sqlContext = SQLContext(sc)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "[('spark.driver.port', '38319'),\n",
+       " ('spark.app.name', 'final_project_notebook'),\n",
+       " ('spark.app.id', 'local-1575307679300'),\n",
+       " ('spark.rdd.compress', 'True'),\n",
+       " ('spark.serializer.objectStreamReset', '100'),\n",
+       " ('spark.master', 'local[*]'),\n",
+       " ('spark.executor.id', 'driver'),\n",
+       " ('spark.submit.deployMode', 'client'),\n",
+       " ('spark.ui.showConsoleProgress', 'true'),\n",
+       " ('spark.driver.host', 'docker.w261')]"
+      ]
+     },
+     "execution_count": 8,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "sc._conf.getAll()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Toy Example"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "toyDF = spark.read.csv(\"toy_example.txt\", header=True)\n",
+    "toyRDD = toyDF.rdd"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "['y', 'x1', 'x2', 'x6', 'x8', 'x14', 'x19', 'x20', 'x35']"
+      ]
+     },
+     "execution_count": 10,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "toyDF.columns"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "numericToImpute = toyDF.columns[:-4]\n",
+    "categoricalToImpute = toyDF.columns[-4:]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def imputeValues(df, numericToImpute, categoricalToImpute):\n",
+    "   \n",
+    "    # Impute numerical features\n",
+    "    for col in numericToImpute:\n",
+    "        mean = df.select(col).agg({col:'mean'}).collect()[0][0]\n",
+    "        print(f\"Column {col} has mean {mean}\")\n",
+    "        df = df.withColumn(col, F.when(df[col].isNull(), mean).otherwise(df[col]))\n",
+    "    \n",
+    "    for col in categoricalToImpute:\n",
+    "        mostCommon = df.select(col).groupby(col).count()\\\n",
+    "                            .orderBy('count', ascending=False) \\\n",
+    "                            .limit(1).collect()[0][0]\n",
+    "        if mostCommon == \"\" or mostCommon is None:\n",
+    "            mostCommon = \"EMPTY\"\n",
+    "            \n",
+    "        print(f\"Column {col} has most common {mostCommon}\")\n",
+    "        \n",
+    "        df = df.withColumn(col, F.when((df[col].isNull() | (df[col] == '')), mostCommon) \\\n",
+    "                                .otherwise(df[col]))\n",
+    "           \n",
+    "    return df"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Column y has mean 0.3\n",
+      "Column x1 has mean 3.25\n",
+      "Column x2 has mean 71.0\n",
+      "Column x6 has mean 75.625\n",
+      "Column x8 has mean 17.5\n",
+      "Column x14 has most common 05db9164\n",
+      "Column x19 has most common fbad5c96\n",
+      "Column x20 has most common af0809a5\n",
+      "Column x35 has most common EMPTY\n"
+     ]
+    }
+   ],
+   "source": [
+    "toyDF = imputeValues(toyDF, numericToImpute, categoricalToImpute)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pyspark.ml import Pipeline\n",
+    "from pyspark.ml.feature import StringIndexer, OneHotEncoder, VectorAssembler"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "categorical_columns= categoricalToImpute\n",
+    "\n",
+    "# The index of string vlaues multiple columns\n",
+    "indexers = [\n",
+    "    StringIndexer(inputCol=c, outputCol=\"{0}_indexed\".format(c))\n",
+    "    for c in categorical_columns\n",
+    "]\n",
+    "\n",
+    "# The encode of indexed vlaues multiple columns\n",
+    "encoders = [OneHotEncoder(dropLast=False,inputCol=indexer.getOutputCol(),\n",
+    "            outputCol=\"{0}_encoded\".format(indexer.getOutputCol())) \n",
+    "    for indexer in indexers\n",
+    "]\n",
+    "\n",
+    "# Vectorizing encoded values\n",
+    "assembler = VectorAssembler(inputCols=[encoder.getOutputCol() for encoder in encoders],outputCol=\"features\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "pipeline = Pipeline(stages=indexers + encoders+[assembler])\n",
+    "model=pipeline.fit(toyDF)\n",
+    "transformed = model.transform(toyDF)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "uniqueVals = []\n",
+    "for i, col in enumerate(transformed.columns[5:9]):\n",
+    "    uniqueVals.append(len(transformed.select(col).groupby(col).count().distinct().collect()))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pyspark.sql.types import DoubleType\n",
+    "from pyspark.sql.functions import lit, udf\n",
+    "\n",
+    "def ith_(v, i):\n",
+    "    try:\n",
+    "        return float(v[i])\n",
+    "    except ValueError:\n",
+    "        return None\n",
+    "\n",
+    "ith = udf(ith_, DoubleType())"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "for i, col in enumerate(transformed.columns[-5:-1]):\n",
+    "    for j in range(uniqueVals[i]):\n",
+    "        transformed = transformed.withColumn(f'oh_{i}_{j}', ith(col, lit(j)))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "for col in transformed.columns[5:18]:\n",
+    "    transformed = transformed.drop(col)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Add in a Bias Term"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "transformed = transformed.withColumn('x0', lit(1))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "toyRDD = transformed.rdd"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Now we have converted our toy example CSV into something we can perform gradient descent using map reduce paradigm."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "[Row(y='1.0', x1='2.0', x2='671.0', x6='145.0', x8='12.0', oh_0_0=1.0, oh_0_1=0.0, oh_0_2=0.0, oh_0_3=0.0, oh_1_0=1.0, oh_1_1=0.0, oh_1_2=0.0, oh_2_0=0.0, oh_2_1=0.0, oh_2_2=0.0, oh_2_3=0.0, oh_2_4=0.0, oh_2_5=1.0, oh_2_6=0.0, oh_2_7=0.0, oh_2_8=0.0, oh_2_9=0.0, oh_3_0=1.0, oh_3_1=0.0, x0=1),\n",
+       " Row(y='0.0', x1='0.0', x2='-1.0', x6='9.0', x8='0.0', oh_0_0=1.0, oh_0_1=0.0, oh_0_2=0.0, oh_0_3=0.0, oh_1_0=0.0, oh_1_1=0.0, oh_1_2=1.0, oh_2_0=1.0, oh_2_1=0.0, oh_2_2=0.0, oh_2_3=0.0, oh_2_4=0.0, oh_2_5=0.0, oh_2_6=0.0, oh_2_7=0.0, oh_2_8=0.0, oh_2_9=0.0, oh_3_0=1.0, oh_3_1=0.0, x0=1),\n",
+       " Row(y='0.0', x1='3.25', x2='0.0', x6='100.0', x8='0.0', oh_0_0=0.0, oh_0_1=0.0, oh_0_2=1.0, oh_0_3=0.0, oh_1_0=0.0, oh_1_1=1.0, oh_1_2=0.0, oh_2_0=0.0, oh_2_1=0.0, oh_2_2=0.0, oh_2_3=0.0, oh_2_4=0.0, oh_2_5=0.0, oh_2_6=0.0, oh_2_7=1.0, oh_2_8=0.0, oh_2_9=0.0, oh_3_0=0.0, oh_3_1=1.0, x0=1),\n",
+       " Row(y='0.0', x1='3.25', x2='-1.0', x6='75.625', x8='0.0', oh_0_0=1.0, oh_0_1=0.0, oh_0_2=0.0, oh_0_3=0.0, oh_1_0=1.0, oh_1_1=0.0, oh_1_2=0.0, oh_2_0=0.0, oh_2_1=1.0, oh_2_2=0.0, oh_2_3=0.0, oh_2_4=0.0, oh_2_5=0.0, oh_2_6=0.0, oh_2_7=0.0, oh_2_8=0.0, oh_2_9=0.0, oh_3_0=1.0, oh_3_1=0.0, x0=1),\n",
+       " Row(y='0.0', x1='3.25', x2='1.0', x6='203.0', x8='5.0', oh_0_0=0.0, oh_0_1=1.0, oh_0_2=0.0, oh_0_3=0.0, oh_1_0=1.0, oh_1_1=0.0, oh_1_2=0.0, oh_2_0=0.0, oh_2_1=0.0, oh_2_2=0.0, oh_2_3=0.0, oh_2_4=0.0, oh_2_5=0.0, oh_2_6=0.0, oh_2_7=0.0, oh_2_8=1.0, oh_2_9=0.0, oh_3_0=1.0, oh_3_1=0.0, x0=1),\n",
+       " Row(y='0.0', x1='1.0', x2='-1.0', x6='0.0', x8='0.0', oh_0_0=1.0, oh_0_1=0.0, oh_0_2=0.0, oh_0_3=0.0, oh_1_0=1.0, oh_1_1=0.0, oh_1_2=0.0, oh_2_0=0.0, oh_2_1=0.0, oh_2_2=1.0, oh_2_3=0.0, oh_2_4=0.0, oh_2_5=0.0, oh_2_6=0.0, oh_2_7=0.0, oh_2_8=0.0, oh_2_9=0.0, oh_3_0=1.0, oh_3_1=0.0, x0=1),\n",
+       " Row(y='1.0', x1='3.25', x2='39.0', x6='75.625', x8='117.0', oh_0_0=0.0, oh_0_1=0.0, oh_0_2=0.0, oh_0_3=1.0, oh_1_0=0.0, oh_1_1=1.0, oh_1_2=0.0, oh_2_0=0.0, oh_2_1=0.0, oh_2_2=0.0, oh_2_3=0.0, oh_2_4=1.0, oh_2_5=0.0, oh_2_6=0.0, oh_2_7=0.0, oh_2_8=0.0, oh_2_9=0.0, oh_3_0=1.0, oh_3_1=0.0, x0=1),\n",
+       " Row(y='0.0', x1='3.25', x2='0.0', x6='66.0', x8='7.0', oh_0_0=1.0, oh_0_1=0.0, oh_0_2=0.0, oh_0_3=0.0, oh_1_0=1.0, oh_1_1=0.0, oh_1_2=0.0, oh_2_0=0.0, oh_2_1=0.0, oh_2_2=0.0, oh_2_3=0.0, oh_2_4=0.0, oh_2_5=0.0, oh_2_6=0.0, oh_2_7=0.0, oh_2_8=0.0, oh_2_9=1.0, oh_3_0=1.0, oh_3_1=0.0, x0=1),\n",
+       " Row(y='1.0', x1='10.0', x2='1.0', x6='66.0', x8='27.0', oh_0_0=1.0, oh_0_1=0.0, oh_0_2=0.0, oh_0_3=0.0, oh_1_0=1.0, oh_1_1=0.0, oh_1_2=0.0, oh_2_0=0.0, oh_2_1=0.0, oh_2_2=0.0, oh_2_3=1.0, oh_2_4=0.0, oh_2_5=0.0, oh_2_6=0.0, oh_2_7=0.0, oh_2_8=0.0, oh_2_9=0.0, oh_3_0=1.0, oh_3_1=0.0, x0=1),\n",
+       " Row(y='0.0', x1='3.25', x2='1.0', x6='16.0', x8='7.0', oh_0_0=0.0, oh_0_1=1.0, oh_0_2=0.0, oh_0_3=0.0, oh_1_0=0.0, oh_1_1=1.0, oh_1_2=0.0, oh_2_0=0.0, oh_2_1=0.0, oh_2_2=0.0, oh_2_3=0.0, oh_2_4=0.0, oh_2_5=0.0, oh_2_6=1.0, oh_2_7=0.0, oh_2_8=0.0, oh_2_9=0.0, oh_3_0=1.0, oh_3_1=0.0, x0=1)]"
+      ]
+     },
+     "execution_count": 23,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "toyRDD.collect()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Perform Gradient Descent with Logistic Regression"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "https://ml-cheatsheet.readthedocs.io/en/latest/logistic_regression.html"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import math\n",
+    "from functools import partial"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def sigmoid(z):\n",
+    "    return 1.0 / (1 + np.exp(-z))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def predict(weights, line):\n",
+    "    y = np.array(line[0]).astype(dtype='float')\n",
+    "    x = np.array(line[1:]).astype(dtype='float')\n",
+    "    z = np.dot(x, weights)\n",
+    "    \n",
+    "    return sigmoid(z)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def gradients(weights, lr, line):\n",
+    "    y = np.array(line[0]).astype(dtype='float')\n",
+    "    x = np.array(line[1:]).astype(dtype='float')\n",
+    "    z = np.dot(x, weights)\n",
+    "    \n",
+    "    predictions = sigmoid(z)\n",
+    "    gradient = predictions\n",
+    "    gradient = np.dot(x.T,  predictions - y)\n",
+    "    gradient = gradient/len(theta)\n",
+    "    gradient = gradient*lr\n",
+    "    \n",
+    "    return gradient"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def calcCost(weights, eps, line):\n",
+    "    y = np.array(line[0]).astype(dtype='float')\n",
+    "    x = np.array(line[1:]).astype(dtype='float')\n",
+    "    z = np.dot(x, weights)\n",
+    "    pred = sigmoid(z)\n",
+    "    \n",
+    "    #Take the error when label=1\n",
+    "    class1_cost = -y*np.log(pred+eps) # Add epsilon to prevent nan\n",
+    "\n",
+    "    #Take the error when label=0\n",
+    "    class2_cost = (1-y)*np.log(1-pred+eps) # Add epsilon to prevent nan\n",
+    "    cost = class1_cost - class2_cost\n",
+    "\n",
+    "    return cost"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Train Our Model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Here We Created Our Weight Matrix Initialized to 0's\n",
+    "theta = np.zeros(len(transformed.columns)-1).astype(dtype='float')\n",
+    "LR = 0.5\n",
+    "ITERATIONS = 1000\n",
+    "EPSILON = 1e-6"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def train(toyRDD, theta, ITERATIONS, LR, EPSILON, verbose=False):\n",
+    "    cost_history = []\n",
+    "\n",
+    "    for i in range(ITERATIONS+1):\n",
+    "        \n",
+    "        preds = toyRDD.map(partial(predict, theta)).collect()\n",
+    "        preds = [\"%.2f\" % v for v in preds] # Format to 2 decimals\n",
+    "        \n",
+    "        grads = toyRDD.map(partial(gradients, theta, LR)).mean()\n",
+    "        \n",
+    "        theta = theta - grads\n",
+    "        \n",
+    "        #Calculate Error for Tracking\n",
+    "        cost = toyRDD.map(partial(calcCost, theta, EPSILON)).mean()\n",
+    "        cost_history.append(cost)\n",
+    "\n",
+    "        # Log Progress\n",
+    "        if verbose:\n",
+    "            if i % 50 == 0:\n",
+    "                print(f\"==========================================================\")\n",
+    "                print(f\"Iter: {i}, Cost: {cost:.3}\")\n",
+    "                print(f\"==========================================================\")\n",
+    "                print(f\"Preds: {preds}\")\n",
+    "                print(f\"==========================================================\")\n",
+    "                print(f\"Weights: {theta}\")\n",
+    "\n",
+    "    return theta, cost_history"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 31,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "==========================================================\n",
+      "Iter: 0, Cost: 0.872\n",
+      "==========================================================\n",
+      "Preds: ['0.50', '0.50', '0.50', '0.50', '0.50', '0.50', '0.50', '0.50', '0.50', '0.50']\n",
+      "==========================================================\n",
+      "Weights: [-0.00208333  0.74166667 -0.190625    0.14270833 -0.00208333 -0.00208333\n",
+      " -0.00104167  0.00104167 -0.00208333 -0.00104167 -0.00104167 -0.00104167\n",
+      " -0.00104167 -0.00104167  0.00104167  0.00104167  0.00104167 -0.00104167\n",
+      " -0.00104167 -0.00104167 -0.00104167 -0.003125   -0.00104167 -0.00416667]\n",
+      "==========================================================\n",
+      "Iter: 50, Cost: 0.173\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.13', '0.00', '0.00', '0.00', '0.26', '1.00', '0.01', '0.82', '0.66']\n",
+      "==========================================================\n",
+      "Weights: [-0.02573593  0.7414457  -0.10456336  0.30050898 -0.02673727 -0.07409395\n",
+      " -0.00125879  0.00104167 -0.01132438 -0.07323795 -0.01648601 -0.01648601\n",
+      " -0.00132323 -0.03157756  0.02656952  0.00104167  0.00104167 -0.07302083\n",
+      " -0.00125879 -0.00107312 -0.00496165 -0.09978955 -0.00125879 -0.10104835]\n",
+      "==========================================================\n",
+      "Iter: 100, Cost: 0.142\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.11', '0.00', '0.00', '0.00', '0.21', '1.00', '0.01', '0.84', '0.59']\n",
+      "==========================================================\n",
+      "Weights: [-0.08301494  0.7312809  -0.10230292  0.32888755 -0.0460264  -0.13902749\n",
+      " -0.00126098  0.00104167 -0.01855694 -0.13817368 -0.02854259 -0.02854259\n",
+      " -0.00133521 -0.05623497  0.04461229  0.00104167  0.00104167 -0.13795436\n",
+      " -0.00126098 -0.00107313 -0.00556759 -0.18401222 -0.00126098 -0.1852732 ]\n",
+      "==========================================================\n",
+      "Iter: 150, Cost: 0.118\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.09', '0.00', '0.00', '0.00', '0.18', '1.00', '0.01', '0.86', '0.52']\n",
+      "==========================================================\n",
+      "Weights: [-0.1321501   0.72066102 -0.10045319  0.35395897 -0.06141201 -0.1963089\n",
+      " -0.00126295  0.00104167 -0.02356148 -0.19545706 -0.03892366 -0.03892366\n",
+      " -0.00134514 -0.07657397  0.06054382  0.00104167  0.00104167 -0.19523578\n",
+      " -0.00126295 -0.00107313 -0.00615474 -0.25667925 -0.00126295 -0.2579422 ]\n",
+      "==========================================================\n",
+      "Iter: 200, Cost: 0.0997\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.08', '0.00', '0.00', '0.00', '0.15', '1.00', '0.01', '0.87', '0.46']\n",
+      "==========================================================\n",
+      "Weights: [-0.17441023  0.71053959 -0.09914555  0.37680407 -0.07416539 -0.24676324\n",
+      " -0.00126471  0.00104167 -0.02720977 -0.24591316 -0.04802875 -0.04802875\n",
+      " -0.00135349 -0.09371891  0.07461834  0.00104167  0.00104167 -0.24569012\n",
+      " -0.00126471 -0.00107313 -0.00672424 -0.31988696 -0.00126471 -0.32115167]\n",
+      "==========================================================\n",
+      "Iter: 250, Cost: 0.0856\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.07', '0.00', '0.00', '0.00', '0.13', '1.00', '0.01', '0.89', '0.40']\n",
+      "==========================================================\n",
+      "Weights: [-0.21101188  0.70127843 -0.09835924  0.39789614 -0.08506301 -0.29132877\n",
+      " -0.00126625  0.00104167 -0.03001517 -0.29048023 -0.05612097 -0.05612097\n",
+      " -0.00136053 -0.10844684  0.08709553  0.00104167  0.00104167 -0.29025565\n",
+      " -0.00126625 -0.00107313 -0.00727187 -0.37535011 -0.00126625 -0.37661637]\n",
+      "==========================================================\n",
+      "Iter: 300, Cost: 0.0746\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.07', '0.00', '0.00', '0.00', '0.12', '1.00', '0.00', '0.90', '0.36']\n",
+      "==========================================================\n",
+      "Weights: [-0.24299841  0.69295447 -0.09799854  0.41747641 -0.09459339 -0.33090174\n",
+      " -0.00126758  0.00104167 -0.0322791  -0.33005453 -0.06338742 -0.06338742\n",
+      " -0.00136642 -0.12130344  0.09821559  0.00104167  0.00104167 -0.32982861\n",
+      " -0.00126758 -0.00107313 -0.00779336 -0.42445346 -0.00126758 -0.42572105]\n",
+      "==========================================================\n",
+      "Iter: 350, Cost: 0.0658\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.06', '0.00', '0.00', '0.00', '0.10', '1.00', '0.00', '0.91', '0.32']\n",
+      "==========================================================\n",
+      "Weights: [-0.27122025  0.6855212  -0.09795951  0.43569899 -0.10307633 -0.36626923\n",
+      " -0.00126872  0.00104167 -0.03418123 -0.36542315 -0.06996823 -0.06996823\n",
+      " -0.00137135 -0.13267992  0.10818759  0.00104167  0.00104167 -0.3651961\n",
+      " -0.00126872 -0.00107313 -0.00828609 -0.46830389 -0.00126872 -0.4695726 ]\n",
+      "==========================================================\n",
+      "Iter: 400, Cost: 0.0587\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.06', '0.00', '0.00', '0.00', '0.09', '1.00', '0.00', '0.92', '0.29']\n",
+      "==========================================================\n",
+      "Weights: [-0.29635413  0.67888747 -0.09815333  0.4526866  -0.11073015 -0.39809376\n",
+      " -0.00126967  0.00104167 -0.03583136 -0.39724864 -0.07597191 -0.07597191\n",
+      " -0.00137547 -0.14286289  0.11718762  0.00104167  0.00104167 -0.39702063\n",
+      " -0.00126967 -0.00107313 -0.00874916 -0.50778224 -0.00126967 -0.50905192]\n",
+      "==========================================================\n",
+      "Iter: 450, Cost: 0.0528\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.05', '0.00', '0.00', '0.00', '0.08', '1.00', '0.00', '0.93', '0.26']\n",
+      "==========================================================\n",
+      "Weights: [-0.31893389  0.67295318 -0.098511    0.46854923 -0.11770993 -0.42692186\n",
+      " -0.00127048  0.00104167 -0.03729869 -0.42607754 -0.08148437 -0.08148437\n",
+      " -0.00137892 -0.15206685  0.12536156  0.00104167  0.00104167 -0.42584873\n",
+      " -0.00127048 -0.00107313 -0.00918301 -0.54359013 -0.00127048 -0.5448606 ]\n",
+      "==========================================================\n",
+      "Iter: 500, Cost: 0.0479\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.05', '0.00', '0.00', '0.00', '0.08', '1.00', '0.00', '0.93', '0.24']\n",
+      "==========================================================\n",
+      "Weights: [-0.3393808   0.66762404 -0.09898126  0.48338888 -0.1241298  -0.45320078\n",
+      " -0.00127115  0.00104167 -0.03862822 -0.45235713 -0.08657471 -0.08657471\n",
+      " -0.00138183 -0.16045549  0.13282946  0.00104167  0.00104167 -0.45212765\n",
+      " -0.00127115 -0.00107313 -0.0095889  -0.57628891 -0.00127115 -0.57756006]\n",
+      "==========================================================\n",
+      "Iter: 550, Cost: 0.0438\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.04', '0.00', '0.00', '0.00', '0.07', '1.00', '0.00', '0.94', '0.22']\n",
+      "==========================================================\n",
+      "Weights: [-0.35802899  0.66281671 -0.09952694  0.49730008 -0.1300763  -0.47729621\n",
+      " -0.00127172  0.00104167 -0.03985025 -0.47645314 -0.09129918 -0.09129918\n",
+      " -0.00138429 -0.16815604  0.13969008  0.00104167  0.00104167 -0.47622308\n",
+      " -0.00127172 -0.00107313 -0.00996854 -0.60633085 -0.00127172 -0.60760257]\n",
+      "==========================================================\n",
+      "Iter: 600, Cost: 0.0402\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.04', '0.00', '0.00', '0.00', '0.07', '1.00', '0.00', '0.94', '0.21']\n",
+      "==========================================================\n",
+      "Weights: [-0.37514562  0.65845961 -0.10012137  0.5103695  -0.13561678 -0.49950808\n",
+      " -0.0012722   0.00104167 -0.04098581 -0.49866549 -0.0957041  -0.0957041\n",
+      " -0.00138638 -0.17526899  0.14602488  0.00104167  0.00104167 -0.49843495\n",
+      " -0.0012722  -0.00107313 -0.01032386 -0.63408319 -0.0012722  -0.6353554 ]\n",
+      "==========================================================\n",
+      "Iter: 650, Cost: 0.0372\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.04', '0.00', '0.00', '0.00', '0.06', '1.00', '0.00', '0.95', '0.19']\n",
+      "==========================================================\n",
+      "Weights: [-0.39094624  0.65449212 -0.10074551  0.52267577 -0.14080477 -0.52008363\n",
+      " -0.00127261  0.00104167 -0.04204999 -0.51924145 -0.09982791 -0.09982791\n",
+      " -0.00138817 -0.18187494  0.15190139  0.00104167  0.00104167 -0.5190105\n",
+      " -0.00127261 -0.00107313 -0.0106568  -0.65984674 -0.00127261 -0.66111935]\n",
+      "==========================================================\n",
+      "Iter: 700, Cost: 0.0346\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.04', '0.00', '0.00', '0.00', '0.06', '1.00', '0.00', '0.95', '0.18']\n",
+      "==========================================================\n",
+      "Weights: [-0.40560643  0.65086316 -0.10138584  0.53428964 -0.14568362 -0.539228\n",
+      " -0.00127296  0.00104167 -0.04305389 -0.53838616 -0.10370285 -0.10370285\n",
+      " -0.00138971 -0.18803936  0.15737589  0.00104167  0.00104167 -0.53815487\n",
+      " -0.00127296 -0.00107313 -0.01096925 -0.68386995 -0.00127296 -0.68514291]\n",
+      "==========================================================\n",
+      "Iter: 750, Cost: 0.0323\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.03', '0.00', '0.00', '0.00', '0.05', '1.00', '0.00', '0.95', '0.17']\n",
+      "==========================================================\n",
+      "Weights: [-0.41927056  0.64752969 -0.10203276  0.54527439 -0.15028895 -0.55711252\n",
+      " -0.00127326  0.00104167 -0.04400596 -0.55627099 -0.10735612 -0.10735612\n",
+      " -0.00139105 -0.19381609  0.16249561  0.00104167  0.00104167 -0.55603939\n",
+      " -0.00127326 -0.00107313 -0.01126297 -0.7063598  -0.00127326 -0.70763307]\n",
+      "==========================================================\n",
+      "Iter: 800, Cost: 0.0303\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.03', '0.00', '0.00', '0.00', '0.05', '1.00', '0.00', '0.96', '0.16']\n",
+      "==========================================================\n",
+      "Weights: [-0.43205843  0.64445541 -0.10267951  0.55568648 -0.15465046 -0.57388131\n",
+      " -0.00127352  0.00104167 -0.04491273 -0.57304003 -0.11081086 -0.11081086\n",
+      " -0.00139221 -0.19924988  0.16730043  0.00104167  0.00104167 -0.57280818\n",
+      " -0.00127352 -0.00107313 -0.01153959 -0.7274901  -0.00127352 -0.72876362]\n",
+      "==========================================================\n",
+      "Iter: 850, Cost: 0.0285\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.03', '0.00', '0.00', '0.00', '0.05', '1.00', '0.00', '0.96', '0.15']\n",
+      "==========================================================\n",
+      "Weights: [-0.44407033  0.64160959 -0.10332132  0.56557615 -0.15879316 -0.58965641\n",
+      " -0.00127375  0.00104167 -0.0457794  -0.58881536 -0.11408689 -0.11408689\n",
+      " -0.00139323 -0.20437832  0.17182422  0.00104167  0.00104167 -0.58858328\n",
+      " -0.00127375 -0.00107313 -0.01180061 -0.7474079  -0.00127375 -0.74868164]\n",
+      "==========================================================\n",
+      "Iter: 900, Cost: 0.0268\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.03', '0.00', '0.00', '0.00', '0.05', '1.00', '0.00', '0.96', '0.14']\n",
+      "==========================================================\n",
+      "Weights: [-0.45539088  0.63896608 -0.10395493  0.57498812 -0.16273834 -0.60454186\n",
+      " -0.00127394  0.00104167 -0.04661017 -0.60370101 -0.1172013  -0.1172013\n",
+      " -0.00139413 -0.20923321  0.17609597  0.00104167  0.00104167 -0.60346873\n",
+      " -0.00127394 -0.00107313 -0.01204735 -0.76623853 -0.00127394 -0.76751248]\n",
+      "==========================================================\n",
+      "Iter: 950, Cost: 0.0254\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.03', '0.00', '0.00', '0.00', '0.04', '1.00', '0.00', '0.96', '0.13']\n",
+      "==========================================================\n",
+      "Weights: [-0.46609204  0.63650258 -0.10457806  0.58396223 -0.1665043  -0.61862692\n",
+      " -0.00127411  0.00104167 -0.04740853 -0.61778624 -0.1201689  -0.1201689\n",
+      " -0.00139493 -0.21384173  0.18014061  0.00104167  0.00104167 -0.61755379\n",
+      " -0.00127411 -0.00107313 -0.01228102 -0.78408955 -0.00127411 -0.78536367]\n",
+      "==========================================================\n",
+      "Iter: 1000, Cost: 0.0241\n",
+      "==========================================================\n",
+      "Preds: ['1.00', '0.03', '0.00', '0.00', '0.00', '0.04', '1.00', '0.00', '0.96', '0.13']\n",
+      "==========================================================\n",
+      "Weights: [-0.47623546  0.63419994 -0.10518926  0.59253401 -0.17010686 -0.63198862\n",
+      " -0.00127427  0.00104167 -0.04817738 -0.63114809 -0.12300262 -0.12300262\n",
+      " -0.00139563 -0.21822727  0.18397971  0.00104167  0.00104167 -0.63091549\n",
+      " -0.00127427 -0.00107313 -0.01250272 -0.80105382 -0.00127427 -0.80232808]\n"
+     ]
+    }
+   ],
+   "source": [
+    "theta, cost_history = train(toyRDD, theta, ITERATIONS, LR, EPSILON, verbose=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 32,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "[Row(y='1.0'),\n",
+       " Row(y='0.0'),\n",
+       " Row(y='0.0'),\n",
+       " Row(y='0.0'),\n",
+       " Row(y='0.0'),\n",
+       " Row(y='0.0'),\n",
+       " Row(y='1.0'),\n",
+       " Row(y='0.0'),\n",
+       " Row(y='1.0'),\n",
+       " Row(y='0.0')]"
+      ]
+     },
+     "execution_count": 32,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "toyDF.select('y').collect()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.6.6"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
